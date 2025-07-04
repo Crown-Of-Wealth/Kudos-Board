@@ -25,8 +25,7 @@
     recipient: principal,
     message: (string-ascii 100),
     category: (string-ascii 30),
-    block-sent: uint,
-    timestamp: uint
+    block-sent: uint
   }
 )
 
@@ -61,8 +60,7 @@
 (define-public (send-kudo (to principal) (message (string-ascii 100)) (category (string-ascii 30)))
   (let (
         (sender tx-sender)
-        (current-block (block-height))
-        (current-time (unwrap-panic (get-block-info? time current-block)))
+        (current-block burn-block-height)
         (last-block (default-to u0 (map-get? last-sent { sender: sender, recipient: to })))
         (new-id (var-get kudos-count))
       )
@@ -80,8 +78,7 @@
       recipient: to,
       message: message,
       category: category,
-      block-sent: current-block,
-      timestamp: current-time
+      block-sent: current-block
     })
     
     ;; Update rate limiting
@@ -91,7 +88,7 @@
     (update-user-indexes sender to new-id)
     
     ;; Update statistics
-    (update-user-stats sender to current-time)
+    (update-user-stats sender to current-block)
     
     ;; Increment counter
     (var-set kudos-count (+ new-id u1))
@@ -137,7 +134,7 @@
 )
 
 ;; Update user statistics
-(define-private (update-user-stats (sender principal) (recipient principal) (timestamp uint))
+(define-private (update-user-stats (sender principal) (recipient principal) (block-height uint))
   (let (
         (sender-stats (default-to { sent-count: u0, received-count: u0, last-activity: u0 } 
                                  (map-get? user-stats sender)))
@@ -148,13 +145,13 @@
     (map-set user-stats sender {
       sent-count: (+ (get sent-count sender-stats) u1),
       received-count: (get received-count sender-stats),
-      last-activity: timestamp
+      last-activity: block-height
     })
     ;; Update recipient stats
     (map-set user-stats recipient {
       sent-count: (get sent-count recipient-stats),
       received-count: (+ (get received-count recipient-stats) u1),
-      last-activity: timestamp
+      last-activity: block-height
     })
   )
 )
@@ -209,7 +206,7 @@
 ;; Utility function to check if user can send kudo
 (define-read-only (can-send-kudo (sender principal) (recipient principal))
   (let (
-        (current-block (block-height))
+        (current-block burn-block-height)
         (last-block (default-to u0 (map-get? last-sent { sender: sender, recipient: recipient })))
       )
     (and 
