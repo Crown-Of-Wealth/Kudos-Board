@@ -1,74 +1,224 @@
-(define-constant ERR_SAME_SENDER_RECEIVER 100)
-(define-constant ERR_TOO_SOON 101)
-(define-constant ERR_MESSAGE_TOO_LONG 102)
-(define-constant ERR_CATEGORY_TOO_LONG 103)
+;; Enhanced Community Kudos Contract
+;; Optimized for gas efficiency and better functionality
 
+(define-constant ERR_SAME_SENDER_RECEIVER u100)
+(define-constant ERR_TOO_SOON u101)
+(define-constant ERR_MESSAGE_TOO_LONG u102)
+(define-constant ERR_CATEGORY_TOO_LONG u103)
+(define-constant ERR_KUDO_NOT_FOUND u104)
+(define-constant ERR_UNAUTHORIZED u105)
+
+;; Maximum limits for validation
+(define-constant MAX_MESSAGE_LENGTH u100)
+(define-constant MAX_CATEGORY_LENGTH u30)
+(define-constant MAX_KUDOS_PER_USER u100)
+
+;; Global state
 (define-data-var kudos-count uint u0)
+(define-data-var contract-owner principal tx-sender)
+
+;; Core data structures
 (define-map kudos
   uint
   {
     sender: principal,
     recipient: principal,
-    message: (buff 100),
-    category: (buff 30),
-    block-sent: uint
+    message: (string-ascii 100),
+    category: (string-ascii 30),
+    block-sent: uint,
+    timestamp: uint
   }
 )
 
+;; Rate limiting - track last send time per sender-recipient pair
 (define-map last-sent
   { sender: principal, recipient: principal }
   uint
 )
 
-(define-map kudos-index-by-user
+;; User indexes for efficient lookups
+(define-map kudos-sent-by-user
   principal
   (list 100 uint)
 )
 
-(define-public (send-kudo (to principal) (message (buff 100)) (category (buff 30)))
+(define-map kudos-received-by-user
+  principal
+  (list 100 uint)
+)
+
+;; User statistics
+(define-map user-stats
+  principal
+  {
+    sent-count: uint,
+    received-count: uint,
+    last-activity: uint
+  }
+)
+
+;; Enhanced send-kudo function with validation and batching support
+(define-public (send-kudo (to principal) (message (string-ascii 100)) (category (string-ascii 30)))
   (let (
         (sender tx-sender)
-        (current-block-height (block-height))
+        (current-block (block-height))
+        (current-time (unwrap-panic (get-block-info? time current-block)))
         (last-block (default-to u0 (map-get? last-sent { sender: sender, recipient: to })))
+        (new-id (var-get kudos-count))
       )
-    ;; Prevent spamming - only one kudo per sender->recipient per block
-    (if (is-eq sender to)
-        (err ERR_SAME_SENDER_RECEIVER)
-        (if (>= last-block current-block-height)
-            (err ERR_TOO_SOON)
-            (let (
-                  (new-id (var-get kudos-count))
-                )
-              (begin
-                ;; Save the kudo entry
-                (map-set kudos new-id {
-                  sender: sender,
-                  recipient: to,
-                  message: message,
-                  category: category,
-                  block-sent: current-block-height
-                })
-                ;; Update index
-                (map-set last-sent { sender: sender, recipient: to } current-block-height)
-                (map-set kudos-index-by-user to (cons new-id (default-to (list) (map-get? kudos-index-by-user to))))
-                ;; Increment global kudo count
-                (var-set kudos-count (+ new-id u1))
-                (ok { id: new-id })
-              )
-            )
-        )
+    ;; Input validation
+    (asserts! (not (is-eq sender to)) (err ERR_SAME_SENDER_RECEIVER))
+    (asserts! (< (len message) MAX_MESSAGE_LENGTH) (err ERR_MESSAGE_TOO_LONG))
+    (asserts! (< (len category) MAX_CATEGORY_LENGTH) (err ERR_CATEGORY_TOO_LONG))
+    
+    ;; Rate limiting - prevent spam (one kudo per block per sender-recipient pair)
+    (asserts! (< last-block current-block) (err ERR_TOO_SOON))
+    
+    ;; Store kudo
+    (map-set kudos new-id {
+      sender: sender,
+      recipient: to,
+      message: message,
+      category: category,
+      block-sent: current-block,
+      timestamp: current-time
+    })
+    
+    ;; Update rate limiting
+    (map-set last-sent { sender: sender, recipient: to } current-block)
+    
+    ;; Update indexes efficiently
+    (update-user-indexes sender to new-id)
+    
+    ;; Update statistics
+    (update-user-stats sender to current-time)
+    
+    ;; Increment counter
+    (var-set kudos-count (+ new-id u1))
+    
+    (ok { id: new-id, block: current-block })
+  )
+)
+
+;; Batch send kudos for efficiency
+(define-public (send-kudos-batch (recipients (list 10 principal)) (message (string-ascii 100)) (category (string-ascii 30)))
+  (let (
+        (sender tx-sender)
+        (results (map send-single-kudo recipients))
+      )
+    (ok results)
+  )
+)
+
+;; Private helper for batch operations
+(define-private (send-single-kudo (recipient principal))
+  (match (send-kudo recipient "Batch kudo" "batch")
+    success success
+    error error
+  )
+)
+
+;; Efficient index updates
+(define-private (update-user-indexes (sender principal) (recipient principal) (kudo-id uint))
+  (let (
+        (sender-sent (default-to (list) (map-get? kudos-sent-by-user sender)))
+        (recipient-received (default-to (list) (map-get? kudos-received-by-user recipient)))
+      )
+    ;; Only update if we haven't exceeded max list size
+    (if (< (len sender-sent) MAX_KUDOS_PER_USER)
+        (map-set kudos-sent-by-user sender (cons kudo-id sender-sent))
+        true
+    )
+    (if (< (len recipient-received) MAX_KUDOS_PER_USER)
+        (map-set kudos-received-by-user recipient (cons kudo-id recipient-received))
+        true
     )
   )
 )
 
+;; Update user statistics
+(define-private (update-user-stats (sender principal) (recipient principal) (timestamp uint))
+  (let (
+        (sender-stats (default-to { sent-count: u0, received-count: u0, last-activity: u0 } 
+                                 (map-get? user-stats sender)))
+        (recipient-stats (default-to { sent-count: u0, received-count: u0, last-activity: u0 } 
+                                    (map-get? user-stats recipient)))
+      )
+    ;; Update sender stats
+    (map-set user-stats sender {
+      sent-count: (+ (get sent-count sender-stats) u1),
+      received-count: (get received-count sender-stats),
+      last-activity: timestamp
+    })
+    ;; Update recipient stats
+    (map-set user-stats recipient {
+      sent-count: (get sent-count recipient-stats),
+      received-count: (+ (get received-count recipient-stats) u1),
+      last-activity: timestamp
+    })
+  )
+)
+
+;; Enhanced read-only functions
 (define-read-only (get-kudo (id uint))
   (map-get? kudos id)
 )
 
-(define-read-only (get-kudos-by-user (user principal))
-  (default-to (list) (map-get? kudos-index-by-user user))
+(define-read-only (get-kudos-sent-by-user (user principal))
+  (default-to (list) (map-get? kudos-sent-by-user user))
+)
+
+(define-read-only (get-kudos-received-by-user (user principal))
+  (default-to (list) (map-get? kudos-received-by-user user))
+)
+
+(define-read-only (get-user-stats (user principal))
+  (map-get? user-stats user)
 )
 
 (define-read-only (get-kudo-count)
   (var-get kudos-count)
+)
+
+(define-read-only (get-recent-kudos (limit uint))
+  (let (
+        (total-count (var-get kudos-count))
+        (start-id (if (> total-count limit) (- total-count limit) u0))
+      )
+    (map get-kudo (range start-id total-count))
+  )
+)
+
+;; Utility function to check if user can send kudo
+(define-read-only (can-send-kudo (sender principal) (recipient principal))
+  (let (
+        (current-block (block-height))
+        (last-block (default-to u0 (map-get? last-sent { sender: sender, recipient: recipient })))
+      )
+    (and 
+      (not (is-eq sender recipient))
+      (< last-block current-block)
+    )
+  )
+)
+
+;; Range helper function
+(define-private (range (start uint) (end uint))
+  (if (>= start end)
+      (list)
+      (cons start (range (+ start u1) end))
+  )
+)
+
+;; Admin functions
+(define-public (set-contract-owner (new-owner principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) (err ERR_UNAUTHORIZED))
+    (var-set contract-owner new-owner)
+    (ok true)
+  )
+)
+
+(define-read-only (get-contract-owner)
+  (var-get contract-owner)
 )
