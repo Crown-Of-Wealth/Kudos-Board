@@ -123,11 +123,11 @@
       )
     ;; Only update if we haven't exceeded max list size
     (if (< (len sender-sent) MAX_KUDOS_PER_USER)
-        (map-set kudos-sent-by-user sender (append sender-sent (list kudo-id)))
+        (map-set kudos-sent-by-user sender (unwrap-panic (as-max-len? (append sender-sent (list kudo-id)) u100)))
         true
     )
     (if (< (len recipient-received) MAX_KUDOS_PER_USER)
-        (map-set kudos-received-by-user recipient (append recipient-received (list kudo-id)))
+        (map-set kudos-received-by-user recipient (unwrap-panic (as-max-len? (append recipient-received (list kudo-id)) u100)))
         true
     )
   )
