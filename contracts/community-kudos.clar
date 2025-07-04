@@ -28,13 +28,13 @@
 (define-public (send-kudo (to principal) (message (buff 100)) (category (buff 30)))
   (let (
         (sender tx-sender)
-        (block-height (block-height))
+        (current-block-height (block-height))
         (last-block (default-to u0 (map-get? last-sent { sender: sender, recipient: to })))
       )
     ;; Prevent spamming - only one kudo per sender->recipient per block
     (if (is-eq sender to)
         (err ERR_SAME_SENDER_RECEIVER)
-        (if (>= last-block block-height)
+        (if (>= last-block current-block-height)
             (err ERR_TOO_SOON)
             (let (
                   (new-id (var-get kudos-count))
@@ -46,10 +46,10 @@
                   recipient: to,
                   message: message,
                   category: category,
-                  block-sent: block-height
+                  block-sent: current-block-height
                 })
                 ;; Update index
-                (map-set last-sent { sender: sender, recipient: to } block-height)
+                (map-set last-sent { sender: sender, recipient: to } current-block-height)
                 (map-set kudos-index-by-user to (cons new-id (default-to (list) (map-get? kudos-index-by-user to))))
                 ;; Increment global kudo count
                 (var-set kudos-count (+ new-id u1))
