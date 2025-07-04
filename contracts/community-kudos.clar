@@ -180,12 +180,29 @@
   (var-get kudos-count)
 )
 
-(define-read-only (get-recent-kudos (limit uint))
+;; Get specific kudos by ID range (simpler approach)
+(define-read-only (get-kudos-by-range (start-id uint) (end-id uint))
   (let (
         (total-count (var-get kudos-count))
-        (start-id (if (> total-count limit) (- total-count limit) u0))
+        (safe-start (if (< start-id total-count) start-id total-count))
+        (safe-end (if (< end-id total-count) end-id total-count))
       )
-    (map get-kudo (range start-id total-count))
+    ;; Return up to 10 recent kudos manually
+    (if (> safe-end safe-start)
+        (list 
+          (get-kudo safe-start)
+          (get-kudo (+ safe-start u1))
+          (get-kudo (+ safe-start u2))
+          (get-kudo (+ safe-start u3))
+          (get-kudo (+ safe-start u4))
+          (get-kudo (+ safe-start u5))
+          (get-kudo (+ safe-start u6))
+          (get-kudo (+ safe-start u7))
+          (get-kudo (+ safe-start u8))
+          (get-kudo (+ safe-start u9))
+        )
+        (list)
+    )
   )
 )
 
@@ -199,14 +216,6 @@
       (not (is-eq sender recipient))
       (< last-block current-block)
     )
-  )
-)
-
-;; Range helper function
-(define-private (range (start uint) (end uint))
-  (if (>= start end)
-      (list)
-      (cons start (range (+ start u1) end))
   )
 )
 
