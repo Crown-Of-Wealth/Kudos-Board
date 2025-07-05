@@ -46,7 +46,7 @@
 )
 
 ;; Update user statistics - defined before use
-(define-private (update-user-stats (sender principal) (recipient principal) (block-height uint))
+(define-private (update-user-stats (sender principal) (recipient principal) (current-block uint))
   (let (
         (sender-stats (default-to { sent-count: u0, received-count: u0, last-activity: u0 } 
                                  (map-get? user-stats sender)))
@@ -57,13 +57,13 @@
     (map-set user-stats sender {
       sent-count: (+ (get sent-count sender-stats) u1),
       received-count: (get received-count sender-stats),
-      last-activity: block-height
+      last-activity: current-block
     })
     ;; Update recipient stats
     (map-set user-stats recipient {
       sent-count: (get sent-count recipient-stats),
       received-count: (+ (get received-count recipient-stats) u1),
-      last-activity: block-height
+      last-activity: current-block
     })
   )
 )
