@@ -45,6 +45,29 @@
   }
 )
 
+;; Update user statistics - defined before use
+(define-private (update-user-stats (sender principal) (recipient principal) (block-height uint))
+  (let (
+        (sender-stats (default-to { sent-count: u0, received-count: u0, last-activity: u0 } 
+                                 (map-get? user-stats sender)))
+        (recipient-stats (default-to { sent-count: u0, received-count: u0, last-activity: u0 } 
+                                    (map-get? user-stats recipient)))
+      )
+    ;; Update sender stats
+    (map-set user-stats sender {
+      sent-count: (+ (get sent-count sender-stats) u1),
+      received-count: (get received-count sender-stats),
+      last-activity: block-height
+    })
+    ;; Update recipient stats
+    (map-set user-stats recipient {
+      sent-count: (get sent-count recipient-stats),
+      received-count: (+ (get received-count recipient-stats) u1),
+      last-activity: block-height
+    })
+  )
+)
+
 ;; Enhanced send-kudo function with validation and batching support
 (define-public (send-kudo (to principal) (message (string-ascii 100)) (category (string-ascii 30)))
   (let (
@@ -83,6 +106,14 @@
   )
 )
 
+;; Private helper for batch operations
+(define-private (send-single-kudo-batch (recipient principal))
+  (match (send-kudo recipient "Batch kudo" "batch")
+    success success
+    error error
+  )
+)
+
 ;; Batch send kudos for efficiency
 (define-public (send-kudos-batch (recipients (list 10 principal)) (message (string-ascii 100)) (category (string-ascii 30)))
   (let (
@@ -93,94 +124,88 @@
   )
 )
 
-;; Private helper for batch operations
-(define-private (send-single-kudo-batch (recipient principal))
-  (match (send-kudo recipient "Batch kudo" "batch")
-    success success
-    error error
-  )
-)
-
-;; Update user statistics
-(define-private (update-user-stats (sender principal) (recipient principal) (block-height uint))
-  (let (
-        (sender-stats (default-to { sent-count: u0, received-count: u0, last-activity: u0 } 
-                                 (map-get? user-stats sender)))
-        (recipient-stats (default-to { sent-count: u0, received-count: u0, last-activity: u0 } 
-                                    (map-get? user-stats recipient)))
-      )
-    ;; Update sender stats
-    (map-set user-stats sender {
-      sent-count: (+ (get sent-count sender-stats) u1),
-      received-count: (get received-count sender-stats),
-      last-activity: block-height
-    })
-    ;; Update recipient stats
-    (map-set user-stats recipient {
-      sent-count: (get sent-count recipient-stats),
-      received-count: (+ (get received-count recipient-stats) u1),
-      last-activity: block-height
-    })
-  )
-)
-
 ;; Enhanced read-only functions
 (define-read-only (get-kudo (id uint))
   (map-get? kudos id)
 )
 
-;; Simple approach: Get kudos sent by user by checking each kudo individually
+;; Get kudos sent by user - simplified approach without circular dependencies
 (define-read-only (get-kudos-sent-by-user (user principal))
   (let (
         (total-count (var-get kudos-count))
         (max-check (if (> total-count u10) u10 total-count))
       )
-    (filter-kudos-sent-by-user user u0 max-check (list))
+    (get-sent-kudos-list user u0 max-check)
   )
 )
 
+;; Get kudos received by user - simplified approach without circular dependencies
 (define-read-only (get-kudos-received-by-user (user principal))
   (let (
         (total-count (var-get kudos-count))
         (max-check (if (> total-count u10) u10 total-count))
       )
-    (filter-kudos-received-by-user user u0 max-check (list))
+    (get-received-kudos-list user u0 max-check)
   )
 )
 
-;; Helper function to filter kudos sent by user (iterative approach)
-(define-private (filter-kudos-sent-by-user (user principal) (current-id uint) (max-id uint) (acc (list 10 uint)))
-  (if (>= current-id max-id)
-      acc
-      (let ((kudo-opt (get-kudo current-id)))
-        (match kudo-opt
-          some-kudo (if (is-eq (get sender some-kudo) user)
-                        (let ((new-acc (unwrap-panic (as-max-len? (append acc current-id) u10))))
-                          (filter-kudos-sent-by-user user (+ current-id u1) max-id new-acc)
-                        )
-                        (filter-kudos-sent-by-user user (+ current-id u1) max-id acc)
-                    )
-          none (filter-kudos-sent-by-user user (+ current-id u1) max-id acc)
-        )
+;; Helper function to get sent kudos list (non-recursive approach)
+(define-private (get-sent-kudos-list (user principal) (start-id uint) (max-id uint))
+  (let (
+        (kudo-0 (get-kudo-if-sent-by-user user start-id))
+        (kudo-1 (get-kudo-if-sent-by-user user (+ start-id u1)))
+        (kudo-2 (get-kudo-if-sent-by-user user (+ start-id u2)))
+        (kudo-3 (get-kudo-if-sent-by-user user (+ start-id u3)))
+        (kudo-4 (get-kudo-if-sent-by-user user (+ start-id u4)))
+        (kudo-5 (get-kudo-if-sent-by-user user (+ start-id u5)))
+        (kudo-6 (get-kudo-if-sent-by-user user (+ start-id u6)))
+        (kudo-7 (get-kudo-if-sent-by-user user (+ start-id u7)))
+        (kudo-8 (get-kudo-if-sent-by-user user (+ start-id u8)))
+        (kudo-9 (get-kudo-if-sent-by-user user (+ start-id u9)))
       )
+    (filter is-some (list kudo-0 kudo-1 kudo-2 kudo-3 kudo-4 kudo-5 kudo-6 kudo-7 kudo-8 kudo-9))
   )
 )
 
-;; Helper function to filter kudos received by user (iterative approach)
-(define-private (filter-kudos-received-by-user (user principal) (current-id uint) (max-id uint) (acc (list 10 uint)))
-  (if (>= current-id max-id)
-      acc
-      (let ((kudo-opt (get-kudo current-id)))
-        (match kudo-opt
-          some-kudo (if (is-eq (get recipient some-kudo) user)
-                        (let ((new-acc (unwrap-panic (as-max-len? (append acc current-id) u10))))
-                          (filter-kudos-received-by-user user (+ current-id u1) max-id new-acc)
-                        )
-                        (filter-kudos-received-by-user user (+ current-id u1) max-id acc)
-                    )
-          none (filter-kudos-received-by-user user (+ current-id u1) max-id acc)
-        )
+;; Helper function to get received kudos list (non-recursive approach)
+(define-private (get-received-kudos-list (user principal) (start-id uint) (max-id uint))
+  (let (
+        (kudo-0 (get-kudo-if-received-by-user user start-id))
+        (kudo-1 (get-kudo-if-received-by-user user (+ start-id u1)))
+        (kudo-2 (get-kudo-if-received-by-user user (+ start-id u2)))
+        (kudo-3 (get-kudo-if-received-by-user user (+ start-id u3)))
+        (kudo-4 (get-kudo-if-received-by-user user (+ start-id u4)))
+        (kudo-5 (get-kudo-if-received-by-user user (+ start-id u5)))
+        (kudo-6 (get-kudo-if-received-by-user user (+ start-id u6)))
+        (kudo-7 (get-kudo-if-received-by-user user (+ start-id u7)))
+        (kudo-8 (get-kudo-if-received-by-user user (+ start-id u8)))
+        (kudo-9 (get-kudo-if-received-by-user user (+ start-id u9)))
       )
+    (filter is-some (list kudo-0 kudo-1 kudo-2 kudo-3 kudo-4 kudo-5 kudo-6 kudo-7 kudo-8 kudo-9))
+  )
+)
+
+;; Helper to get kudo ID if sent by user
+(define-private (get-kudo-if-sent-by-user (user principal) (kudo-id uint))
+  (let ((kudo-opt (get-kudo kudo-id)))
+    (match kudo-opt
+      some-kudo (if (is-eq (get sender some-kudo) user)
+                    (some kudo-id)
+                    none)
+      none none
+    )
+  )
+)
+
+;; Helper to get kudo ID if received by user
+(define-private (get-kudo-if-received-by-user (user principal) (kudo-id uint))
+  (let ((kudo-opt (get-kudo kudo-id)))
+    (match kudo-opt
+      some-kudo (if (is-eq (get recipient some-kudo) user)
+                    (some kudo-id)
+                    none)
+      none none
+    )
   )
 )
 
