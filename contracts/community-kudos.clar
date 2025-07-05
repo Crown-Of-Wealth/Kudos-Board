@@ -140,23 +140,41 @@
   (map-get? kudos id)
 )
 
-;; Get kudos by filtering through all kudos (simplified approach)
+;; Get kudos sent by user (manual approach)
 (define-read-only (get-kudos-sent-by-user (user principal))
-  (filter (lambda (kudo-id) 
-    (match (get-kudo kudo-id)
-      some-kudo (is-eq (get sender some-kudo) user)
-      none false
-    )
-  ) (create-range (var-get kudos-count)))
+  (let ((total-count (var-get kudos-count)))
+    (fold (lambda (kudo-id acc) (check-kudo-sent-by-user kudo-id acc user)) 
+          (create-range total-count) 
+          (list))
+  )
 )
 
 (define-read-only (get-kudos-received-by-user (user principal))
-  (filter (lambda (kudo-id) 
-    (match (get-kudo kudo-id)
-      some-kudo (is-eq (get recipient some-kudo) user)
-      none false
-    )
-  ) (create-range (var-get kudos-count)))
+  (let ((total-count (var-get kudos-count)))
+    (fold (lambda (kudo-id acc) (check-kudo-received-by-user kudo-id acc user)) 
+          (create-range total-count) 
+          (list))
+  )
+)
+
+;; Helper function to check if a kudo was sent by user
+(define-private (check-kudo-sent-by-user (kudo-id uint) (acc (list 20 uint)) (user principal))
+  (match (get-kudo kudo-id)
+    some-kudo (if (is-eq (get sender some-kudo) user)
+                  (unwrap-panic (as-max-len? (append acc kudo-id) u20))
+                  acc)
+    none acc
+  )
+)
+
+;; Helper function to check if a kudo was received by user
+(define-private (check-kudo-received-by-user (kudo-id uint) (acc (list 20 uint)) (user principal))
+  (match (get-kudo kudo-id)
+    some-kudo (if (is-eq (get recipient some-kudo) user)
+                  (unwrap-panic (as-max-len? (append acc kudo-id) u20))
+                  acc)
+    none acc
+  )
 )
 
 ;; Create a simple range from 0 to count-1 (max 10 items for gas efficiency)
