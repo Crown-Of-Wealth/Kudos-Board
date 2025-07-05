@@ -140,36 +140,86 @@
   (map-get? kudos id)
 )
 
-;; Get kudos sent by user (direct approach)
+;; Get kudos sent by user (manual checking approach)
 (define-read-only (get-kudos-sent-by-user (user principal))
-  (fold (lambda (kudo-id acc) (check-kudo-sent-by-user kudo-id acc user)) 
-        (create-range (var-get kudos-count)) 
-        (list))
+  (get-user-kudos-sent user (var-get kudos-count))
 )
 
 (define-read-only (get-kudos-received-by-user (user principal))
-  (fold (lambda (kudo-id acc) (check-kudo-received-by-user kudo-id acc user)) 
-        (create-range (var-get kudos-count)) 
-        (list))
+  (get-user-kudos-received user (var-get kudos-count))
 )
 
-;; Helper function to check if a kudo was sent by user
-(define-private (check-kudo-sent-by-user (kudo-id uint) (acc (list 20 uint)) (user principal))
-  (match (get-kudo kudo-id)
-    some-kudo (if (is-eq (get sender some-kudo) user)
-                  (unwrap-panic (as-max-len? (append acc kudo-id) u20))
-                  acc)
-    none acc
+;; Helper function to manually check kudos sent by user
+(define-private (get-user-kudos-sent (user principal) (count uint))
+  (let ((results (list)))
+    (if (> count u0)
+        (append-if-sent-by-user u0 user results count)
+        results
+    )
   )
 )
 
-;; Helper function to check if a kudo was received by user
-(define-private (check-kudo-received-by-user (kudo-id uint) (acc (list 20 uint)) (user principal))
-  (match (get-kudo kudo-id)
-    some-kudo (if (is-eq (get recipient some-kudo) user)
-                  (unwrap-panic (as-max-len? (append acc kudo-id) u20))
-                  acc)
-    none acc
+;; Helper function to manually check kudos received by user
+(define-private (get-user-kudos-received (user principal) (count uint))
+  (let ((results (list)))
+    (if (> count u0)
+        (append-if-received-by-user u0 user results count)
+        results
+    )
+  )
+)
+
+;; Check if kudo was sent by user and append to results
+(define-private (append-if-sent-by-user (kudo-id uint) (user principal) (acc (list 10 uint)) (max-count uint))
+  (if (>= kudo-id max-count)
+      acc
+      (let ((kudo-opt (get-kudo kudo-id)))
+        (match kudo-opt
+          some-kudo (if (is-eq (get sender some-kudo) user)
+                        (let ((new-acc (unwrap-panic (as-max-len? (append acc kudo-id) u10))))
+                          (if (< (+ kudo-id u1) max-count)
+                              (append-if-sent-by-user (+ kudo-id u1) user new-acc max-count)
+                              new-acc
+                          )
+                        )
+                        (if (< (+ kudo-id u1) max-count)
+                            (append-if-sent-by-user (+ kudo-id u1) user acc max-count)
+                            acc
+                        )
+                    )
+          none (if (< (+ kudo-id u1) max-count)
+                   (append-if-sent-by-user (+ kudo-id u1) user acc max-count)
+                   acc
+               )
+        )
+      )
+  )
+)
+
+;; Check if kudo was received by user and append to results
+(define-private (append-if-received-by-user (kudo-id uint) (user principal) (acc (list 10 uint)) (max-count uint))
+  (if (>= kudo-id max-count)
+      acc
+      (let ((kudo-opt (get-kudo kudo-id)))
+        (match kudo-opt
+          some-kudo (if (is-eq (get recipient some-kudo) user)
+                        (let ((new-acc (unwrap-panic (as-max-len? (append acc kudo-id) u10))))
+                          (if (< (+ kudo-id u1) max-count)
+                              (append-if-received-by-user (+ kudo-id u1) user new-acc max-count)
+                              new-acc
+                          )
+                        )
+                        (if (< (+ kudo-id u1) max-count)
+                            (append-if-received-by-user (+ kudo-id u1) user acc max-count)
+                            acc
+                        )
+                    )
+          none (if (< (+ kudo-id u1) max-count)
+                   (append-if-received-by-user (+ kudo-id u1) user acc max-count)
+                   acc
+               )
+        )
+      )
   )
 )
 
