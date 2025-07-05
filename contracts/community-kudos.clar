@@ -160,7 +160,7 @@
         (kudo-8 (get-kudo-if-sent-by-user user (+ start-id u8)))
         (kudo-9 (get-kudo-if-sent-by-user user (+ start-id u9)))
       )
-    (filter is-some (list kudo-0 kudo-1 kudo-2 kudo-3 kudo-4 kudo-5 kudo-6 kudo-7 kudo-8 kudo-9))
+    (build-kudo-list (list kudo-0 kudo-1 kudo-2 kudo-3 kudo-4 kudo-5 kudo-6 kudo-7 kudo-8 kudo-9))
   )
 )
 
@@ -178,7 +178,24 @@
         (kudo-8 (get-kudo-if-received-by-user user (+ start-id u8)))
         (kudo-9 (get-kudo-if-received-by-user user (+ start-id u9)))
       )
-    (filter is-some (list kudo-0 kudo-1 kudo-2 kudo-3 kudo-4 kudo-5 kudo-6 kudo-7 kudo-8 kudo-9))
+    (build-kudo-list (list kudo-0 kudo-1 kudo-2 kudo-3 kudo-4 kudo-5 kudo-6 kudo-7 kudo-8 kudo-9))
+  )
+)
+
+;; Helper function to build list of kudo IDs from optional values
+(define-private (build-kudo-list (opt-list (list 10 (optional uint))))
+  (let (
+        (result (list))
+      )
+    (fold add-if-some opt-list result)
+  )
+)
+
+;; Helper function to add kudo ID to result if it has a value
+(define-private (add-if-some (opt-kudo (optional uint)) (acc (list 10 uint)))
+  (match opt-kudo
+    some-kudo (unwrap-panic (as-max-len? (append acc some-kudo) u10))
+    acc
   )
 )
 
