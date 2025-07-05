@@ -108,10 +108,7 @@
 
 ;; Private helper for batch operations
 (define-private (send-single-kudo-batch (recipient principal))
-  (match (send-kudo recipient "Batch kudo" "batch")
-    success success
-    error error
-  )
+  (send-kudo recipient "Batch kudo" "batch")
 )
 
 ;; Batch send kudos for efficiency
