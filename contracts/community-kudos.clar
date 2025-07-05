@@ -140,21 +140,17 @@
   (map-get? kudos id)
 )
 
-;; Get kudos sent by user (manual approach)
+;; Get kudos sent by user (direct approach)
 (define-read-only (get-kudos-sent-by-user (user principal))
-  (let ((total-count (var-get kudos-count)))
-    (fold (lambda (kudo-id acc) (check-kudo-sent-by-user kudo-id acc user)) 
-          (create-range total-count) 
-          (list))
-  )
+  (fold (lambda (kudo-id acc) (check-kudo-sent-by-user kudo-id acc user)) 
+        (create-range (var-get kudos-count)) 
+        (list))
 )
 
 (define-read-only (get-kudos-received-by-user (user principal))
-  (let ((total-count (var-get kudos-count)))
-    (fold (lambda (kudo-id acc) (check-kudo-received-by-user kudo-id acc user)) 
-          (create-range total-count) 
-          (list))
-  )
+  (fold (lambda (kudo-id acc) (check-kudo-received-by-user kudo-id acc user)) 
+        (create-range (var-get kudos-count)) 
+        (list))
 )
 
 ;; Helper function to check if a kudo was sent by user
