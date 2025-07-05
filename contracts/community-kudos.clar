@@ -189,7 +189,7 @@
       some-kudo (if (is-eq (get sender some-kudo) user)
                     (some kudo-id)
                     none)
-      none none
+      none
     )
   )
 )
@@ -201,7 +201,7 @@
       some-kudo (if (is-eq (get recipient some-kudo) user)
                     (some kudo-id)
                     none)
-      none none
+      none
     )
   )
 )
