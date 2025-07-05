@@ -7,6 +7,7 @@
 (define-constant ERR_CATEGORY_TOO_LONG u103)
 (define-constant ERR_KUDO_NOT_FOUND u104)
 (define-constant ERR_UNAUTHORIZED u105)
+(define-constant ERR_INVALID_PRINCIPAL u106)
 
 ;; Maximum limits for validation
 (define-constant MAX_MESSAGE_LENGTH u100)
@@ -270,10 +271,20 @@
   )
 )
 
-;; Admin functions
+;; Admin functions - FIXED VERSION TO RESOLVE CLARINET WARNING
 (define-public (set-contract-owner (new-owner principal))
   (begin
+    ;; Check that caller is current owner
     (asserts! (is-eq tx-sender (var-get contract-owner)) (err ERR_UNAUTHORIZED))
+    
+    ;; VALIDATION ADDED HERE - Check that new-owner is not a null/zero principal
+    ;; This addresses the Clarinet warning about unchecked data
+    (asserts! (not (is-eq new-owner 'SP000000000000000000002Q6VF78)) (err ERR_INVALID_PRINCIPAL))
+    
+    ;; Additional validation - ensure new owner is different from current owner
+    (asserts! (not (is-eq new-owner (var-get contract-owner))) (err ERR_INVALID_PRINCIPAL))
+    
+    ;; Now safe to set the new owner
     (var-set contract-owner new-owner)
     (ok true)
   )
