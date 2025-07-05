@@ -73,10 +73,7 @@
     ;; Update rate limiting
     (map-set last-sent { sender: sender, recipient: to } current-block)
     
-    ;; Update indexes efficiently
-    (update-user-indexes sender to new-id)
-    
-    ;; Update statistics
+    ;; Update user statistics
     (update-user-stats sender to current-block)
     
     ;; Increment counter
@@ -90,25 +87,17 @@
 (define-public (send-kudos-batch (recipients (list 10 principal)) (message (string-ascii 100)) (category (string-ascii 30)))
   (let (
         (sender tx-sender)
-        (results (map send-single-kudo recipients))
+        (results (map send-single-kudo-batch recipients))
       )
     (ok results)
   )
 )
 
 ;; Private helper for batch operations
-(define-private (send-single-kudo (recipient principal))
+(define-private (send-single-kudo-batch (recipient principal))
   (match (send-kudo recipient "Batch kudo" "batch")
     success success
     error error
-  )
-)
-
-;; Simplified index updates - just track count instead of full lists
-(define-private (update-user-indexes (sender principal) (recipient principal) (kudo-id uint))
-  (begin
-    ;; We'll just update the stats, no need for complex list management
-    true
   )
 )
 
@@ -140,120 +129,57 @@
   (map-get? kudos id)
 )
 
-;; Get kudos sent by user (manual checking approach)
+;; Simple approach: Get kudos sent by user by checking each kudo individually
 (define-read-only (get-kudos-sent-by-user (user principal))
-  (get-user-kudos-sent user (var-get kudos-count))
+  (let (
+        (total-count (var-get kudos-count))
+        (max-check (if (> total-count u10) u10 total-count))
+      )
+    (filter-kudos-sent-by-user user u0 max-check (list))
+  )
 )
 
 (define-read-only (get-kudos-received-by-user (user principal))
-  (get-user-kudos-received user (var-get kudos-count))
-)
-
-;; Helper function to manually check kudos sent by user
-(define-private (get-user-kudos-sent (user principal) (count uint))
-  (let ((results (list)))
-    (if (> count u0)
-        (append-if-sent-by-user u0 user results count)
-        results
-    )
+  (let (
+        (total-count (var-get kudos-count))
+        (max-check (if (> total-count u10) u10 total-count))
+      )
+    (filter-kudos-received-by-user user u0 max-check (list))
   )
 )
 
-;; Helper function to manually check kudos received by user
-(define-private (get-user-kudos-received (user principal) (count uint))
-  (let ((results (list)))
-    (if (> count u0)
-        (append-if-received-by-user u0 user results count)
-        results
-    )
-  )
-)
-
-;; Check if kudo was sent by user and append to results
-(define-private (append-if-sent-by-user (kudo-id uint) (user principal) (acc (list 10 uint)) (max-count uint))
-  (if (>= kudo-id max-count)
+;; Helper function to filter kudos sent by user (iterative approach)
+(define-private (filter-kudos-sent-by-user (user principal) (current-id uint) (max-id uint) (acc (list 10 uint)))
+  (if (>= current-id max-id)
       acc
-      (let ((kudo-opt (get-kudo kudo-id)))
+      (let ((kudo-opt (get-kudo current-id)))
         (match kudo-opt
           some-kudo (if (is-eq (get sender some-kudo) user)
-                        (let ((new-acc (unwrap-panic (as-max-len? (append acc kudo-id) u10))))
-                          (if (< (+ kudo-id u1) max-count)
-                              (append-if-sent-by-user (+ kudo-id u1) user new-acc max-count)
-                              new-acc
-                          )
+                        (let ((new-acc (unwrap-panic (as-max-len? (append acc current-id) u10))))
+                          (filter-kudos-sent-by-user user (+ current-id u1) max-id new-acc)
                         )
-                        (if (< (+ kudo-id u1) max-count)
-                            (append-if-sent-by-user (+ kudo-id u1) user acc max-count)
-                            acc
-                        )
+                        (filter-kudos-sent-by-user user (+ current-id u1) max-id acc)
                     )
-          none (if (< (+ kudo-id u1) max-count)
-                   (append-if-sent-by-user (+ kudo-id u1) user acc max-count)
-                   acc
-               )
+          none (filter-kudos-sent-by-user user (+ current-id u1) max-id acc)
         )
       )
   )
 )
 
-;; Check if kudo was received by user and append to results
-(define-private (append-if-received-by-user (kudo-id uint) (user principal) (acc (list 10 uint)) (max-count uint))
-  (if (>= kudo-id max-count)
+;; Helper function to filter kudos received by user (iterative approach)
+(define-private (filter-kudos-received-by-user (user principal) (current-id uint) (max-id uint) (acc (list 10 uint)))
+  (if (>= current-id max-id)
       acc
-      (let ((kudo-opt (get-kudo kudo-id)))
+      (let ((kudo-opt (get-kudo current-id)))
         (match kudo-opt
           some-kudo (if (is-eq (get recipient some-kudo) user)
-                        (let ((new-acc (unwrap-panic (as-max-len? (append acc kudo-id) u10))))
-                          (if (< (+ kudo-id u1) max-count)
-                              (append-if-received-by-user (+ kudo-id u1) user new-acc max-count)
-                              new-acc
-                          )
+                        (let ((new-acc (unwrap-panic (as-max-len? (append acc current-id) u10))))
+                          (filter-kudos-received-by-user user (+ current-id u1) max-id new-acc)
                         )
-                        (if (< (+ kudo-id u1) max-count)
-                            (append-if-received-by-user (+ kudo-id u1) user acc max-count)
-                            acc
-                        )
+                        (filter-kudos-received-by-user user (+ current-id u1) max-id acc)
                     )
-          none (if (< (+ kudo-id u1) max-count)
-                   (append-if-received-by-user (+ kudo-id u1) user acc max-count)
-                   acc
-               )
+          none (filter-kudos-received-by-user user (+ current-id u1) max-id acc)
         )
-      )
-  )
-)
-
-;; Create a simple range from 0 to count-1 (max 10 items for gas efficiency)
-(define-private (create-range (count uint))
-  (if (<= count u1)
-      (if (is-eq count u0) 
-          (list) 
-          (list u0))
-      (if (is-eq count u2)
-          (list u0 u1)
-          (if (is-eq count u3)
-              (list u0 u1 u2)
-              (if (is-eq count u4)
-                  (list u0 u1 u2 u3)
-                  (if (is-eq count u5)
-                      (list u0 u1 u2 u3 u4)
-                      (if (is-eq count u6)
-                          (list u0 u1 u2 u3 u4 u5)
-                          (if (is-eq count u7)
-                              (list u0 u1 u2 u3 u4 u5 u6)
-                              (if (is-eq count u8)
-                                  (list u0 u1 u2 u3 u4 u5 u6 u7)
-                                  (if (is-eq count u9)
-                                      (list u0 u1 u2 u3 u4 u5 u6 u7 u8)
-                                      ;; For 10 or more, return first 10
-                                      (list u0 u1 u2 u3 u4 u5 u6 u7 u8 u9)
-                                  )
-                              )
-                          )
-                      )
-                  )
-              )
-          )
       )
   )
 )
